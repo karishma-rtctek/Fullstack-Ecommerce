@@ -1,42 +1,40 @@
 // config/dbWrapper.js
-import pkg from "pg"; // Import the entire 'pg' package
-import dotenv from "dotenv"; // Import dotenv to load environment variables
+import mysql from "mysql2/promise"; // MySQL client
+import dotenv from "dotenv"; // Load env variables
 dotenv.config();
 
-const { Pool } = pkg; // Destructure Pool from the pg package so to access the other modules if needed
-
-// Create Postgres pool
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: Number(process.env.DB_PORT) || 5432,
-  ssl: {
-    rejectUnauthorized: false, // allows connecting to Render Postgres
-  },
+// Create a MySQL connection pool
+const pool = mysql.createPool({
+  socketPath: process.env.DB_SOCKET, // Unix socket on macOS
+  user: process.env.DB_USER,         // root or your MySQL user
+  password: process.env.DB_PASSWORD, // leave empty if root has no password
+  database: process.env.DB_NAME,     // ecommerce
+  waitForConnections: true,
+  connectionLimit: 10,
 });
 
-pool.connect()
-  .then(() => console.log("✅ Postgres Connected Successfully!"))
-  .catch((err) => console.error("❌ Postgres Connection Failed:", err.message));
+// Test the connection
+pool.getConnection()
+  .then((conn) => {
+    console.log("✅ MySQL Connected Successfully!");
+    conn.release();
+  })
+  .catch((err) => console.error("❌ MySQL Connection Failed:", err.message));
 
-// Wrapper to mimic mysql2 syntax
-const query = async (text, params = []) => {
-  // replace '?' with $1, $2...
-  let index = 1;
-  const sql = text.replace(/\?/g, () => `$${index++}`);
-  try {
-    const { rows } = await pool.query(sql, params);
-    return [rows]; // mimic mysql2 -> [rows, fields]
-  } catch (err) {
-    throw err;
-  }
+// Wrapper for queries using ? placeholders (MySQL style)
+const query = async (sql, params = []) => {
+  const [rows] = await pool.query(sql, params);
+  return [rows]; // return [rows] to mimic mysql2 behavior
 };
 
-const db = {
+// Wrapper for execute (for inserts/updates)
+const execute = async (sql, params = []) => {
+  const [rows] = await pool.execute(sql, params);
+  return [rows];
+};
+
+// Export the DB object
+export default {
   query,
-  execute: query, // allows db.execute() too
+  execute,
 };
-
-export default db;

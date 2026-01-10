@@ -3,32 +3,27 @@ import pool from "../config/dbWrapper.js";
 
 const router = express.Router();
 
+// Helper to convert undefined to null
+const safeValue = (v) => (v === undefined ? null : v);
+
 /* =============================
     GET ALL PRODUCTS (WITH PAGINATION)
 ============================= */
 router.get("/", async (req, res) => {
   try {
-    // Page number from query params — default is page 1
     const page = parseInt(req.query.page) || 1;
-
-    // Number of products to show per page (6 = 3x2 UI grid)
     const limit = 6;
-
-    // Calculate how many items to skip
     const offset = (page - 1) * limit;
 
-    // Fetch products for this page
     const [products] = await pool.query(
       "SELECT * FROM products LIMIT ? OFFSET ?",
       [limit, offset]
     );
 
-    // Get total number of products to compute total pages
     const [[{ total }]] = await pool.query(
       "SELECT COUNT(*) as total FROM products"
     );
 
-    // Send paginated response
     res.json({
       products,
       pagination: {
@@ -38,6 +33,7 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Server error", error });
   }
 });
@@ -56,6 +52,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -64,15 +61,16 @@ router.get("/:id", async (req, res) => {
     CREATE PRODUCT
 ============================= */
 router.post("/", async (req, res) => {
-  const { name, price, description, image } = req.body;
+  const { name, price, description, image } = req.body; // <-- frontend sends 'name'
+  const title = name; // map 'name' → 'title'
 
   try {
     const [result] = await pool.execute(
-      "INSERT INTO products (title, price, description, image) VALUES ($1, $2, $3, $4)",
-      [name, price, description, image]
+      "INSERT INTO products (title, price, description, image) VALUES (?, ?, ?, ?)",
+      [title ?? null, price ?? null, description ?? null, image ?? null]
     );
 
-    res.json({ id: result.insertId, name, price, description, image });
+    res.json({ id: result.insertId, title, price, description, image });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -82,14 +80,20 @@ router.post("/", async (req, res) => {
     UPDATE PRODUCT
 ============================= */
 router.put("/:id", async (req, res) => {
-  const { name, price, description, image } = req.body;
+  const { title, price, description, image } = req.body;
 
   try {
     const [result] = await pool.execute(
       `UPDATE products 
-      SET title=$1, price=$2, description=$3, image=$4 
-      WHERE id=$5`,
-      [name, price, description, image, req.params.id]
+       SET title = ?, price = ?, description = ?, image = ? 
+       WHERE id = ?`,
+      [
+        safeValue(title),
+        safeValue(price),
+        safeValue(description),
+        safeValue(image),
+        req.params.id,
+      ]
     );
 
     if (result.affectedRows === 0)
@@ -97,6 +101,7 @@ router.put("/:id", async (req, res) => {
 
     res.json({ message: "Updated successfully!" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -115,6 +120,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ message: "Product deleted" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
